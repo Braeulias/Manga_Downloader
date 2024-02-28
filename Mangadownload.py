@@ -58,50 +58,55 @@ def download_image(image_url, path):
         return path
     return None
 
-def download_chapter_images_and_create_pdf(chapter_id, manga_title, chapter_number, quality='data'):
-    response = requests.get(f"https://api.mangadex.org/at-home/server/{chapter_id}")
-    if response.status_code == 200:
-        chapter_info = response.json()
-        base_url = chapter_info['baseUrl']
-        hash_code = chapter_info['chapter']['hash']
-        file_names = chapter_info['chapter'][quality]
 
-        downloads_path = os.path.expanduser('~/Downloads')
-        sanitized_manga_title = manga_title.replace('/', '_').replace('\\', '_')
-        chapter_dir_name = f"{sanitized_manga_title}_Chapter_{chapter_number}"
-        chapter_download_path = os.path.join(downloads_path, chapter_dir_name)
+def download_chapters_and_create_pdfs(chapters, manga_title, quality='data'):
+    downloads_path = os.path.expanduser('~/Downloads')
+    sanitized_manga_title = manga_title.replace('/', '_').replace('\\', '_')
+    manga_download_path = os.path.join(downloads_path, sanitized_manga_title)
+    os.makedirs(manga_download_path, exist_ok=True)
+
+    for chapter in chapters:
+        chapter_id = chapter['id']
+        chapter_number = chapter['attributes'].get('chapter', 'N/A')
+        chapter_title = chapter['attributes'].get('title', 'No title')
+        print(f"Processing Chapter {chapter_number}: {chapter_title}")
+
+        chapter_dir_name = f"Chapter_{chapter_number}"
+        chapter_download_path = os.path.join(manga_download_path, chapter_dir_name)
         os.makedirs(chapter_download_path, exist_ok=True)
 
         pdf_path = os.path.join(chapter_download_path, f"{chapter_dir_name}.pdf")
         c = canvas.Canvas(pdf_path)
 
-        # Concurrently download images
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_url = {executor.submit(download_image, f"{base_url}/{quality}/{hash_code}/{file_name}", os.path.join(chapter_download_path, file_name)): file_name for file_name in file_names}
-            for future in as_completed(future_to_url):
-                file_name = future_to_url[future]
-                try:
-                    temp_img_path = future.result()
-                    if temp_img_path:
-                        # Open image to add to PDF
-                        with Image.open(temp_img_path) as img:
-                            img_width, img_height = img.size
-                            c.setPageSize((img_width, img_height))
-                            c.drawImage(temp_img_path, 0, 0)
-                            c.showPage()
-                        # Optionally delete the image file after adding to PDF
-                        os.remove(temp_img_path)
-                        print(f"Added {file_name} to PDF")
-                except Exception as exc:
-                    print(f"{file_name} generated an exception: {exc}")
+        response = requests.get(f"https://api.mangadex.org/at-home/server/{chapter_id}")
+        if response.status_code == 200:
+            chapter_info = response.json()
+            base_url = chapter_info['baseUrl']
+            hash_code = chapter_info['chapter']['hash']
+            file_names = chapter_info['chapter'][quality]
 
-        # Save PDF
-        c.save()
-        print(f"Chapter saved as PDF at {pdf_path}")
-    else:
-        print(f"Failed to fetch chapter info. Status code: {response.status_code}")
+            # Download images concurrently but add to PDF in order
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_file_name = {executor.submit(download_image, f"{base_url}/{quality}/{hash_code}/{file_name}", os.path.join(chapter_download_path, file_name)): file_name for file_name in file_names}
 
+                for future in as_completed(future_to_file_name):
+                    file_name = future_to_file_name[future]
+                    try:
+                        temp_img_path = future.result()
+                        if temp_img_path:
+                            with Image.open(temp_img_path) as img:
+                                img_width, img_height = img.size
+                                c.setPageSize((img_width, img_height))
+                                c.drawImage(temp_img_path, 0, 0)
+                                c.showPage()
+                            os.remove(temp_img_path)
+                    except Exception as exc:
+                        print(f"Error downloading {file_name}: {exc}")
 
+            c.save()
+            print(f"Chapter {chapter_number} saved as PDF at {pdf_path}")
+        else:
+            print(f"Failed to fetch chapter info for Chapter {chapter_number}. Status code: {response.status_code}")
 
 
 clear_screen()
@@ -186,15 +191,15 @@ except IndexError:
 except ValueError:
     print("Invalid input. Please enter a number.")
 
-chapter_number = input("Enter the chapter number you want to download: ")
-for chapter in chapters:
-    if chapter['attributes']['chapter'] == chapter_number:
-        print(f"Chapter {chapter_number} selected. Title: {chapter['attributes'].get('title', 'No title')}")
-        confirm = input("Confirm download? (yes/no): ")
-        if confirm.lower() in ['yes', '']:
-            download_chapter_images_and_create_pdf(chapter['id'], chapter['attributes'].get('title', 'No title'), chapter_number)
-        else:
-            print("Download cancelled.")
-        break
+chapter_selection = input("Enter the chapter number you want to download, or '*' to download all: ")
+
+if chapter_selection == '*':
+    confirm = input("Confirm download of all chapters? (yes/no) [default: yes]: ") or "yes"
+    if confirm.lower() in ['yes', '']:
+        download_chapters_and_create_pdfs(chapters, manga_title)
 else:
-    print("Chapter not found.")
+    specific_chapter = next((ch for ch in chapters if ch['attributes']['chapter'] == chapter_selection), None)
+    if specific_chapter:
+        download_chapters_and_create_pdfs([specific_chapter], manga_title)
+    else:
+        print("Chapter not found.")
