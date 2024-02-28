@@ -8,6 +8,7 @@ from reportlab.pdfgen import canvas
 import requests
 import os
 import platform
+from tqdm import tqdm
 
 
 os.environ['TERM'] = 'xterm'  # or another appropriate terminal type like 'vt100'
@@ -86,7 +87,7 @@ def download_chapters_and_create_pdfs(chapters, manga_title, quality='data'):
             file_names = chapter_info['chapter'][quality]
 
             # Download images concurrently but add to PDF in order
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=5) as executor, tqdm(total=len(file_names), desc=f"Downloading Chapter {chapter_number}") as progress:
                 future_to_file_name = {executor.submit(download_image, f"{base_url}/{quality}/{hash_code}/{file_name}", os.path.join(chapter_download_path, file_name)): file_name for file_name in file_names}
 
                 for future in as_completed(future_to_file_name):
@@ -102,6 +103,8 @@ def download_chapters_and_create_pdfs(chapters, manga_title, quality='data'):
                             os.remove(temp_img_path)
                     except Exception as exc:
                         print(f"Error downloading {file_name}: {exc}")
+                    finally:
+                        progress.update(1)
 
             c.save()
             print(f"Chapter {chapter_number} saved as PDF at {pdf_path}")
