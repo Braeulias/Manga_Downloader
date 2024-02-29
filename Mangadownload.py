@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 from reportlab.pdfgen import canvas
