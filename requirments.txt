@@ -1,0 +1,4 @@
+Pillow>=8.0
+reportlab>=3.5
+requests>=2.25
+tqdm>=4.56
