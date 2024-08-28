@@ -27,7 +27,7 @@ To install MangaDownloader, follow these steps:
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/yourusername/MangaDownloader.git
+   git clone https://github.com/Braeulias/Manga_Downloader.git
    cd MangaDownloader
    ```
 
